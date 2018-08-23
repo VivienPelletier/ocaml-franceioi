@@ -14,14 +14,12 @@ let nbLivres, nbJours = lire_pair() in
             for iClient=1 to nbClients do
                 let iLivre, duree = lire_pair() in
                 (* si le livre est disponible *)
-                if livres.(iLivre) = 0 then
+                if livres.(iLivre) <= iJour then
                     begin
-                    livres.(iLivre) <- duree;
+                    livres.(iLivre) <- iJour + duree;
                     print_endline "1";
                     end
                 else
                     print_endline "0"
             done;(* fin client *)
-            (* On décrémente le temps restant des emprunts *)
-            Array.iteri (fun i v -> if v > 0 then livres.(i) <- v-1) livres;
         done;(* fin jour *)
