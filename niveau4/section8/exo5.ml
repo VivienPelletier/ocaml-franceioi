@@ -27,14 +27,13 @@ let gen_graph = fun coord_trees ->
     l in
   Array.mapi gen_adj_mapi coord_trees
 
-let resolve_requests = fun nb_requests adj_graph ->
+let spread_sickness = fun adj_graph ->
   let count_sick = fun sick_trees ->
-    let count_sick_fold = fun nb_sick b ->
-      if  b then
-        nb_sick + 1
-      else
-        nb_sick in
-    Array.fold_left count_sick_fold 0 sick_trees in
+    let nb_sick = ref 0 in
+    let count_sick_iter = fun b ->
+      if b then incr nb_sick in
+    Array.iter count_sick_iter sick_trees;
+    !nb_sick in
   let rec spread = fun sick_trees next ->
     let spread_fold = fun acc i ->
       if not sick_trees.(i) then
@@ -47,21 +46,22 @@ let resolve_requests = fun nb_requests adj_graph ->
     match next with 
     | [] -> ()
     | _ -> spread sick_trees
-             (List.fold_left spread_fold [] next) in   
-  for i=1 to nb_requests do
-    let sick_tree = read_int() in
+             (List.fold_left spread_fold [] next) in
+  let spead_init = fun sick_tree -> 
     let sick_trees = Array.make (Array.length adj_graph) false in
     sick_trees.(sick_tree) <- true;
     spread sick_trees (adj_graph.(sick_tree));
-    Printf.printf "%d\n" (count_sick sick_trees)
+    count_sick sick_trees in
+  Array.init (Array.length adj_graph) spead_init 
+
+let resolve_requests = fun nb_requests spreaded_sickness ->
+  for i=1 to nb_requests do
+    Printf.printf "%d\n" (spreaded_sickness.(read_int()))
   done
 
 let _ =
   let nb_trees, nb_requests = read_2int() in
   let coord_trees = read_coord_trees nb_trees in
   let adj_graph = gen_graph coord_trees in
-  resolve_requests nb_requests adj_graph;
-  (*Array.iteri (fun i l -> 
-      Printf.printf "%d : " i;
-      List.iter (fun x -> Printf.printf "%d " x) l;
-      print_newline()) adj_graph*)
+  let spreaded_sickness = spread_sickness adj_graph in
+  resolve_requests nb_requests spreaded_sickness
