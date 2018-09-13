@@ -1,207 +1,123 @@
-open Scanf;;
-
-type kind_t = Empty | MirrorS | MirrorA | Border
+type dir_t = Top | Bot | Left | Right
+type kind_t = Empty | MirrorS | MirrorA
 type cell_t = {
   kind : kind_t;
-  id : (int*int option) option;
+  (* sens 1 : Empty -> horizontal | Mirror -> left side *)
+  mutable visited1 : bool;
+  (* sens 2 : Empty -> vertical | Mirror -> right side *)
+  mutable visited2 : bool;
 }
-type edge_t = {
-  id : int;
-  dist : int;
-}
-type adj_t = (edge_t*edge_t option) option
 
 let read_labo = fun () ->
-  let curr_id = ref 0 in
   let nb_lines, nb_cols = 
-    let line1 = read_line() in
-    sscanf line1 " %d %d" (fun l c -> l,c) in
-  let cell_of_char = function
-    | '.' -> Empty
-    | '/' -> MirrorS
-    | '\\' -> MirrorA
-    | _ ->  failwith "invalid input" in
-  let border_line_init = fun i ->
-    if i = 0 || i = nb_cols+1 then
-      {kind = Empty; id = None}
-    else
-      begin
-        let id = !curr_id in
-        incr curr_id;
-        {kind = Border; id = Some (id,None)}
-      end in
-  let scan_lin i =
-    if i = 0 || i = nb_lines+1 then
-      Array.init (nb_cols+2) border_line_init
-    else
-      begin
-        let line = read_line() in
-        let cell_init = fun i ->
-          if i = 0 || i = nb_cols+1 then
-            begin
-              let id = !curr_id in
-              incr curr_id;
-              {kind = Border; id = Some (id,None)}
-            end
-          else
-            begin
-              let k = cell_of_char line.[i-1] in
-              match k with
-              | Empty -> {kind = Empty; id = None}
-              | Border -> failwith "pas de bord ici !"
-              | _ -> let id = !curr_id in
-                curr_id := !curr_id+2;
-                {kind = k; id = Some (id, Some (id+1))}
-            end in
-        Array.init (nb_cols+2) cell_init
-      end in
-  let labo = Array.init (nb_lines+2) scan_lin in
-  (labo, !curr_id)
+    let line = read_line() in
+    Scanf.sscanf line " %d %d" (fun l c -> l,c) in
+  let cell_of_char = fun c ->
+    {kind = begin
+        match c with
+        | '.' -> Empty
+        | '/' -> MirrorS
+        | '\\' -> MirrorA
+        | _ -> failwith "bad char in input"
+      end;
+     visited1=false;
+     visited2=false;
+    } in
+  let init_line = fun i ->
+    let line = read_line() in
+    Array.init nb_cols (fun i -> cell_of_char line.[i]) in
+  Array.init nb_lines init_line
 
-let gen_graph = fun labo nb_nodes ->
-  let add_edge_to_node = fun id dist node ->
-    match node with
-    | None -> Some ({id=id; dist=dist}, None)
-    | Some (e1, x) -> match x with
-      | None -> Some (e1, Some {id=id; dist=dist})
-      | _ -> failwith "add edge to full node" in
-  let graph = Array.make nb_nodes None in
-  let gen_h_node_cell_fold = fun (last_node, dist) cell ->
-    match cell.kind with
-    | Empty -> (last_node, dist+1)
-    | Border -> 
-      begin
-        let curr_id = match cell.id with
-          | None -> failwith "Border should have one id"
-          | Some (id, _) -> id in
-        match last_node with
-        | None -> (Some curr_id, 0)
-        | Some other_id -> 
-          graph.(other_id) <- 
-            add_edge_to_node curr_id dist graph.(other_id);
-          graph.(curr_id) <- 
-            add_edge_to_node other_id dist graph.(curr_id);
-          (None,0)
-      end
-    | _ -> begin
-        match last_node with
-        |None -> failwith "Mirrors should have a previous node"
-        |Some other_id -> let curr_id, next_id = match cell.id with
-            | None -> failwith "Border should have one id"
-            | Some (id, x) -> match x with
-              | None -> failwith "Mirrors should have 2 ids"
-              | Some id2 -> (id,id2) in
-          graph.(other_id) <- 
-            add_edge_to_node curr_id dist graph.(other_id);
-          graph.(curr_id) <- 
-            add_edge_to_node other_id dist graph.(curr_id);
-          (Some next_id,0) 
-      end in
-  let gen_v_node_cell = fun (last_node, dist) cell ->
-    match cell.kind with
-    | Empty -> (last_node, dist+1)
-    | Border -> 
-      begin
-        let curr_id = match cell.id with
-          | None -> failwith "Border should have one id"
-          | Some (id, _) -> id in
-        match last_node with
-        | None -> (Some curr_id, 0)
-        | Some other_id -> 
-          graph.(other_id) <- 
-            add_edge_to_node curr_id dist graph.(other_id);
-          graph.(curr_id) <- 
-            add_edge_to_node other_id dist graph.(curr_id);
-          (None,0)
-      end
-    | _ -> begin
-        match last_node with
-        |None -> failwith "Mirrors should have a previous node"
-        |Some other_id -> let curr_id, next_id = match cell.id with
-            | None -> failwith "Border should have one id"
-            | Some (id, x) -> match x with
-              | None -> failwith "Mirrors should have 2 ids"
-              | Some id2 -> match cell.kind with
-                | MirrorA -> (id2,id)
-                | MirrorS -> (id,id2)
-                | _ -> failwith "impossible" in
-          graph.(other_id) <- 
-            add_edge_to_node curr_id dist graph.(other_id);
-          graph.(curr_id) <- 
-            add_edge_to_node other_id dist graph.(curr_id);
-          (Some next_id,0) 
-      end in
-  let gen_h_node_line_iteri = fun i labo_line ->
-    if i <> 0 && i <> (Array.length labo)-1 then
-      let _ = Array.fold_left gen_h_node_cell_fold (None,0) labo_line in
-      () in
-  let gen_v_node_col = fun c ->
-    let acc = ref (None, 0) in
-    for l=0 to Array.length labo - 1 do
-      acc := gen_v_node_cell !acc labo.(l).(c)
-    done in
-  Array.iteri gen_h_node_line_iteri labo;
-  for c=1 to Array.length (labo.(0)) - 2 do
-    gen_v_node_col c
-  done;
-  graph
-
-let compute_max_laser = fun graph ->
-  let visited = Array.make (Array.length graph) false in
-  let compute_length = fun inode ->
-    let rec compute_length_rec = fun inode length ->
-      visited.(inode) <- true;
-      match graph.(inode) with
-      | None -> failwith "Shouldnt have isolated node"
-      | Some (e1, None) -> if visited.(e1.id) then
+let compute_max_length = fun labo ->
+  assert (Array.length labo > 0);
+  let max_length = ref 0 in
+  let get_sens = fun dir kind ->
+    match (dir,kind) with 
+    | (Left, Empty) | (Right, Empty)
+    | (Bot,MirrorS) | (Top, MirrorA)
+    | (Right, _) -> 1
+    | (Top, Empty) | (Bot, Empty) 
+    | (Bot, MirrorA) | (Top, MirrorS)
+    | (Left, _) -> 2 in
+  let compute_length = fun l c sens ->
+    let rec compute_length_rec = fun l c dir length ->
+      (* termination case : border *)
+      if l < 0 || c < 0 ||
+         l >= Array.length labo || c >= Array.length labo.(0) then
+        length
+      else
+        let cell = labo.(l).(c) in
+        let sens = get_sens dir cell.kind in
+        (* termination case : cycle *)
+        if (sens = 1 && cell.visited1) || (sens = 2 && cell.visited2) then
           length
         else
-          compute_length_rec e1.id e1.dist
-      | Some (e1, Some e2) -> if visited.(e1.id) && visited.(e2.id) then
-          length+1
-        else if visited.(e1.id) then
-          compute_length_rec e2.id (length+1+e2.dist)
-        else if visited.(e2.id) then
-          compute_length_rec e1.id (length+1+e1.dist)
-        else
           begin
-            compute_length_rec e1.id (e2.dist+1+e1.dist)
-          end in
-    compute_length_rec inode 0 in
-  let compute_max_acyclic_fold = fun (max,inode) node ->
-    if visited.(inode) then
-      (max,inode+1)
-    else
-      match node with
-      | None -> failwith "Shouldnt have isolated node"
-      | Some (_, Some _) -> (max,inode+1)
-      | Some (e1, None) -> let length = compute_length inode in
-        if length > max then
-          (length,inode+1)
-        else
-          (max,inode+1) in
-  let compute_max_cyclic_fold = fun (max,inode) node ->
-    if visited.(inode) then
-      (max,inode+1)
-    else
-      match node with
-      | None -> failwith "Shouldnt have isolated node"
-      | Some (_, None) -> failwith "Shouldnt have unvisited border node"
-      | Some (e1, Some e2) -> let length = compute_length inode in
-        if length > max then
-          (length,inode+1)
-        else
-          (max,inode+1) in
-  let max_acyclic,_ = 
-    Array.fold_left compute_max_acyclic_fold (0,0) graph in
-  let max_cyclic,_ =
-    Array.fold_left compute_max_cyclic_fold (0,0) graph in
-  if max_acyclic > max_cyclic then
-    max_acyclic
-  else
-    max_cyclic
+            (* Set as visited *)
+            begin
+              if sens = 1 then
+                cell.visited1 <- true
+              else
+                cell.visited2 <- true
+            end;
+            match cell.kind with
+            | Empty -> begin
+                match dir with
+                | Top -> compute_length_rec (l-1) c dir (length+1)
+                | Bot -> compute_length_rec (l+1) c dir (length+1)
+                | Left -> compute_length_rec l (c-1) dir (length+1)
+                | Right -> compute_length_rec l (c+1) dir (length+1)
+              end
+            | MirrorA -> begin
+                match dir with
+                | Top -> compute_length_rec l (c-1) Left (length+1)
+                | Bot -> compute_length_rec l (c+1) Right (length+1)
+                | Left -> compute_length_rec (l-1) c Top (length+1)
+                | Right -> compute_length_rec (l+1) c Bot (length+1)
+              end
+            | MirrorS -> begin 
+                match dir with
+                | Top -> compute_length_rec l (c+1) Right (length+1)
+                | Bot -> compute_length_rec l (c-1) Left (length+1)
+                | Left -> compute_length_rec (l+1) c Bot (length+1)
+                | Right -> compute_length_rec (l-1) c Top (length+1)
+              end
+          end
+    in
+    match labo.(l).(c).kind with
+    | Empty -> if sens=1 then
+        compute_length_rec l c Right 0
+      else
+        compute_length_rec l c Bot 0
+    | MirrorS -> if sens=1 then
+        compute_length_rec l c Right 0
+        + compute_length_rec l (c-1) Left 0
+      else
+        compute_length_rec l c Left 0
+        + compute_length_rec l (c+1) Right 0
+    | MirrorA -> if sens=1 then
+        compute_length_rec l c Right 0
+        + compute_length_rec l (c-1) Left 0
+      else
+        compute_length_rec l c Left 0
+        + compute_length_rec l (c+1) Right 0 in
+  let visit_cell = fun l c cell ->
+    begin
+      if not cell.visited1 then
+        let length = compute_length l c 1 in
+        if length > !max_length then
+          max_length := length
+    end;
+    begin
+      if not cell.visited2 then
+        let length = compute_length l c 2 in
+        if length > !max_length then
+          max_length := length
+    end in
+  Array.iteri (fun l line ->
+      Array.iteri (fun c cell -> visit_cell l c cell) line) labo;
+  !max_length
 
 let _ =
-  let labo, nb_nodes = read_labo() in
-  let graph = gen_graph labo nb_nodes in
-  Printf.printf "%d\n" (compute_max_laser graph)
+  let labo = read_labo() in
+  Printf.printf "%d\n" (compute_max_length labo);
